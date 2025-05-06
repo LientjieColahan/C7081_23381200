@@ -1,0 +1,620 @@
+---
+title: 'Evaluating classification methods for obesity determination '
+author: "Lientjie Colahan"
+date: "2025-05-05"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Github Link
+
+<https://github.com/LientjieColahan/C7081_23381200>
+
+# Predicting Obesity Determinants Through Statistical Learning: A Comparative Analysis of Three Models for Policy Development
+
+## Background
+
+Obesity is defined by the World Health Organisation (WHO) as having a Body Mass Index (BMI) of 30 or greater. The World Obesity Federation's Obesity Atlas (2025) projects 1.13 billion people will be living with obesity globally by 2030, and currently 28% of UK adults are living with obesity. Obesity carries significant economic and psychological costs, with a recent review by Nagi et al. (2024) estimating annual costs between 15 million and 126 billion US dollars, measured as as United States (US) dollar purchasing power parity (PPP) in 2022, depending on the country. Globally, the economic burden can reach up to 2.47% of total GDP. Beyond financial impact, obesity is associated with intangible costs including personal suffering and social stigma.
+
+The research has found the causes of obesity to be multi pronged and inter-related but it is possible to simplify it to a set of non-modifiable and modifiable factors (Masood et al., 2023). The non-modifiable factors involve genetic mutations, polymorphisms and changes in gene expression which predispose individuals to obesity and can not be avoided. The modifiable factors include the epigenetic factors coming from an obesogenic environment making a person more prone to becoming obese, level of physical activity, insufficient sleep, socioeconomic status, ethnicity, psychosocial stress, the gastrointestinal microbiome and others.
+
+In order for policy makers to get to grips with the obesity pandemic an understanding of the factors that lead to the development of obesity is key. Various computational approaches allow insight into the interplay of factors that lead to obesity (Cervantes et al., 2020; Ferdowsy et al., 2021; Gerl et al., 2019; Huang et al., 2025).
+
+This project aims to fit obesity data to three models with 'Obesity level' (NObeyesdad) as the target variable and all other variables as predictor variables to determine which model performs best. Modelling algorithms have shown promising results in previous studies, with decision trees achieving accuracy rates up to 97.4% (De-La-Hoz-Correa, et al., 2019).
+
+## Methods and Results
+
+The data for this assignment was sourced from the UC Irvine Machine Learning Repository (2019) and includes 2111 instances of 16 features associated with obesity level. It is worth mentioning that 23% of the data was collected directly and 77% of the data was generated using the Weka tool and the SMOTE filter by Palechor and Manotas (2019) resulting in a balanced distribution of data regarding the obesity level target variable which reduces the risk of skewed learning behaviour in favour of a majority class in the target variable.
+
+### Data source information and code environment set-up
+
+The following code chunk downloads and installs all necessary libraries for this project, loads the data and sets the seed for reproducibility of the script.
+
+```{r workspace setup}
+library(ucimlrepo)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(klaR)
+library(class)
+library(randomForest)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(vip)
+
+# Make the script reproducible
+set.seed(34)
+
+# working directory
+# setwd("~/GitHub/C7081_Assignment") # replace with local file path and unhash
+
+# read data
+uciml.obesity <- fetch_ucirepo(,544)
+data.obesity <- uciml.obesity$data$original
+targets.obesity <- uciml.obesity$data$targets
+
+```
+
+### Data preparation for model training and evaluation
+
+Start by looking at the structure of the data.
+
+```{r data inspection}
+str(data.obesity)
+unique(targets.obesity)
+```
+
+The data structure shows some variables have been encoded incorrectly, necessitating some data wrangling before moving on.
+
+```{r data wrangling}
+# Prepare data for statistical modeling
+
+# Split the data into testing and training sets 
+# (80:20 split training & testing)
+set.seed(34)
+train_index <- createDataPartition(data.obesity$NObeyesdad, 
+                                   p = 0.8, 
+                                   list = FALSE)
+train_data <- data.obesity[train_index, ]
+test_data <- data.obesity[-train_index, ]
+
+# Convert nominal categorical variables to factors
+train_data$Gender <- as.factor(train_data$Gender)
+test_data$Gender <- as.factor(test_data$Gender)
+
+train_data$family_history_with_overweight <- as.factor(train_data$family_history_with_overweight)
+test_data$family_history_with_overweight <- as.factor(test_data$family_history_with_overweight)
+
+train_data$FAVC <- as.factor(train_data$FAVC)
+test_data$FAVC <- as.factor(test_data$FAVC)
+
+train_data$SMOKE <- as.factor(train_data$SMOKE)
+test_data$SMOKE <- as.factor(test_data$SMOKE)
+
+train_data$SCC <- as.factor(train_data$SCC)
+test_data$SCC <- as.factor(test_data$SCC)
+
+train_data$MTRANS <- as.factor(train_data$MTRANS)
+test_data$MTRANS <- as.factor(test_data$MTRANS)
+
+# Convert ordinal categorical variables to ordered factors
+ordered_levels_caec <- c("no", "Sometimes", "Frequently", "Always")
+train_data$CAEC <- ordered(train_data$CAEC, levels = ordered_levels_caec)
+test_data$CAEC <- ordered(test_data$CAEC, levels = ordered_levels_caec)
+
+ordered_levels_calc <- c("no", "Sometimes", "Frequently", "Always")
+train_data$CALC <- ordered(train_data$CALC, levels = ordered_levels_calc)
+test_data$CALC <- ordered(test_data$CALC, levels = ordered_levels_calc)
+
+# Identify continuous variables for scaling
+continuous_vars <- c("Age", "Height", "Weight", "FCVC", "NCP", 
+                     "CH2O", "FAF", "TUE")
+
+# Scale continuous variables using preProcess from caret
+preprocessor <- preProcess(train_data[, continuous_vars], 
+                           method = c("center", "scale"))
+
+train_scaled <- predict(preprocessor, train_data[, continuous_vars])
+test_scaled <- predict(preprocessor, test_data[, continuous_vars])
+
+# Replace original continuous variables with scaled versions
+train_data[, continuous_vars] <- train_scaled
+test_data[, continuous_vars] <- test_scaled
+
+# Ensure the target variable is a factor in the training data
+train_data$NObeyesdad <- as.factor(train_data$NObeyesdad)
+test_data$NObeyesdad <- as.factor(test_data$NObeyesdad)
+
+# Verify the structure of the processed data
+str(train_data)
+str(test_data)
+```
+
+Now we work towards finding the best model for the classification of obesity.
+
+### Regularised Discriminant Analysis
+
+Linear discriminant analysis (LDA) and quadratic discriminant analysis (QDA) are well known generative models for classification with the choice between the two hinging on the bias-variance trade off (James, Witten, Hastei and Tibshirani, 2021, page 153).
+
+Regularised discriminant analysis is shown by Mkhadri, et al. (1998) to offer a more adaptable approach to covariance estimation addressing the limitations of LDA and QDA. The regularisation techniques introduced in RDA enables the model to deal with multicolinearity better than standard discriminant analysis methods which in this dataset is important since weight is correlated to obesity but also an essential part in predicting obesity so it cannot be excluded.
+
+With these benefits in mind a RDA model is fitted to the data as a robust starting point for classification.
+
+```{r regularised descriminant analysis 1}
+# Build an RDA model
+set.seed(34)
+rda_model <- rda(NObeyesdad ~ ., data = train_data)
+
+# Make predictions on the test set
+rda_predictions <- predict(rda_model, newdata = test_data)$class
+
+```
+
+The out of the box RDA model performs reasonably well on the test data. To evaluate all the models we will consider the accuracy - the proportion of times the model correctly predicted the obesity class - as a percentage, and the Kappa value - proportionally how much better the model is than random chance - as a percentage. When looking at the outputs the overall accuracy is 86.19% and the Kappa is 83.88%
+
+```{r regularised discriminant analysis 2}
+# Evaluate the model's performance
+confusionMatrix(rda_predictions, test_data$NObeyesdad)
+```
+
+To improve this model we can apply Elastic Net regularisation, a hybrid of Ridge and Lasso regularisation in order to tune the model without removing any predictors but instead shrinks their coefficient estimates (potentially to zero) reducing their variance. By applying this regularisation all variables are maintained in the model, but some may be penalised to such an extent that they do not have an effect.
+
+```{r shrinkage methods}
+# Elastic net regularisation
+
+# Define the tuning grid for lambda and alpha
+tune_grid <- expand.grid(gamma = seq(0, 1, by = 0.1),
+                         lambda = seq(0, 1, by = 0.1))
+
+# Set up cross-validation
+set.seed(34)
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train the regularized RDA model using cross-validation
+set.seed(34)
+rda_model_enet <- train(NObeyesdad ~ .,
+                        data = train_data,
+                        method = "rda",
+                        tuneGrid = tune_grid,
+                        trControl = train_control)
+
+# Print the best tuning parameters and results
+print(rda_model_enet)
+
+# Make predictions on the test set using the best model
+rda_predictions_enet <- predict(rda_model_enet, newdata = test_data)
+```
+
+Accuracy was the metric used during tuning to select the optimal gamma and lambda values of 0 and 1, which means the model performs best when the covariance matrices are separated from each class and applying a large/strong penalty to parameters during training to handle multicollinearity.
+
+When looking at the performance of the best model after tuning on the testing data (Table 1) the overall accuracy is 89.29%, and Kappa is 87.49%, an improvement but it is important to consider that the 95% confidence intervals of the two models overlap indicating this reduction may not be relevant in a larger dataset.
+
+```{r rda overall statistics}
+# Evaluate the model
+cm_rda <- confusionMatrix(rda_predictions_enet, test_data$NObeyesdad)
+
+overall_stats_rda <- as.data.frame(cm_rda$overall)
+
+# Remove rows with NaN values
+overall_stats_rda <- overall_stats_rda[!is.nan(overall_stats_rda$`cm_rda$overall`),
+                                       , drop = FALSE]
+
+# Rename the rows after filtering out NaN values
+rownames(overall_stats_rda) <- c("Accuracy", "Kappa", "Accuracy (95% CI Lower)", 
+                                 "Accuracy (95% CI Upper)", "No Information Rate", 
+                                 "Accuracy P-Value")
+# Rename the column
+colnames(overall_stats_rda) <- c("Value")
+
+table_1 <- kable(overall_stats_rda, format = "html", digits = 4, 
+                 caption = "Table 1 RDA Model with Elastic Net - Overall Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "bordered"), 
+                full_width = FALSE) %>%
+  row_spec(0, bold = TRUE)
+
+table_1
+```
+
+```{r rda evaluation}
+# Create a heatmap of the confusion matrix
+conf_matrix_rda <- confusionMatrix(rda_predictions_enet, test_data$NObeyesdad)
+conf_data_rda <- as.data.frame(conf_matrix_rda$table)
+
+CM_heatmap_rda <- ggplot(conf_data_rda, 
+                         aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "black") +
+  scale_fill_gradient(low = "white", high = "#fe9c1f") +
+  labs(title = "Figure 1 Confusion Matrix Heatmap RDA",
+       x = "Actual Class", y = "Predicted Class", fill = "Frequency") +
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Figure 1 shows the number of correct and incorrect predictions the RDA model with elastic net regression applied made,
+
+```{r CM_heatmap_rda}
+plot(CM_heatmap_rda)
+```
+
+### k-Nearest-Neighbours
+
+The KNN model classifies a new datapoint based on its similarity/closeness to other points in the training dataset. This model works differently to other models in that rather than two steps of fitting the model and then making predictions KNN will make predictions using a single command (James, Witten, Hastei and Tibshirani, 2021, page 192). KNN makes no assumptions about the underlying data distribution making it extremely useful, but the value of K needs to be be chosen wisely to balance the variance/bias trade off and since KNN is distance depedant the predictors need to be scaled to avoid variables having a disproportionate effect.
+
+We will apply a KNN model to the data next to see if this approach offers any prediction improvements to RDA
+
+```{r data prep and knn training}
+# See if the alternative approach used in KNN yields better results
+
+set.seed(34)
+
+# Create dummy variables for factor columns in the training data
+dummy_train <- model.matrix(~ . - NObeyesdad, data = train_data)
+dummy_train <- as.data.frame(dummy_train[, -1]) # Remove the intercept column
+
+# Create dummy variables for factor columns in the test data
+dummy_test <- model.matrix(~ . - NObeyesdad, data = test_data)
+dummy_test <- as.data.frame(dummy_test[, -1]) # Remove the intercept column
+
+# Combine dummy variables with the target variable
+train_data_dummy <- cbind(dummy_train, NObeyesdad = train_data$NObeyesdad)
+test_data_dummy <- cbind(dummy_test, NObeyesdad = test_data$NObeyesdad)
+
+# Separate features and target for k-NN
+train_features_dummy <- train_data_dummy[, -which(names(train_data_dummy) == "NObeyesdad")]
+test_features_dummy <- test_data_dummy[, -which(names(test_data_dummy) == "NObeyesdad")]
+train_target_dummy <- train_data_dummy$NObeyesdad
+test_target_dummy <- test_data_dummy$NObeyesdad
+
+# Scale the dummy variable features (important for k-NN)
+preprocessor_dummy <- preProcess(train_features_dummy, 
+                                 method = c("center", "scale"))
+train_features_scaled_dummy <- predict(preprocessor_dummy, 
+                                       train_features_dummy)
+test_features_scaled_dummy <- predict(preprocessor_dummy, 
+                                      test_features_dummy)
+
+# Prepare data for caret's train function
+train_data_dummy_caret <- data.frame(train_features_scaled_dummy, 
+                                     NObeyesdad = train_target_dummy)
+test_data_dummy_caret <- data.frame(test_features_scaled_dummy, 
+                                    NObeyesdad = test_target_dummy)
+
+# Define the range of k values to test
+knn_grid <- data.frame(k = seq(3, 15, 
+                               by = 2)) 
+                          # Testing k from 3 to 15 with a step of 2
+                          # Its reccomended to group odd numbers for classification
+
+# Set up cross-validation
+train_control <- trainControl(method = "cv", 
+                              number = 10)
+
+# Train the k-NN model using cross-validation to find the optimal k
+set.seed(34)
+knn_model_tuned <- train(NObeyesdad ~ .,
+                         data = train_data_dummy_caret,
+                         method = "knn",
+                         tuneGrid = knn_grid,
+                         trControl = train_control)
+
+# Print the best k value and cross-validation results
+print(knn_model_tuned)
+
+# Make predictions on the test set using the tuned model
+knn_predictions_tuned <- predict(knn_model_tuned, 
+                                 newdata = test_data_dummy_caret)
+```
+
+The KNN model does not perform as well as the RDA model on the testing data, Table 2 shows the accuracy is 82.38% and the Kappa is 79.41%.
+
+```{r knn overall statistics}
+# Evaluate the tuned model
+cm_knn <- confusionMatrix(knn_predictions_tuned, 
+                          test_data_dummy_caret$NObeyesdad)
+
+overall_stats_knn <- as.data.frame(cm_knn$overall)
+
+# Remove rows with NaN values
+overall_stats_knn <- overall_stats_knn[!is.nan(overall_stats_knn$`cm_knn$overall`),
+                                       , drop = FALSE]
+
+# Rename the rows after filtering out NaN values
+rownames(overall_stats_knn) <- c("Accuracy", "Kappa", "Accuracy (95% CI Lower)", 
+                                 "Accuracy (95% CI Upper)", "No Information Rate", 
+                                 "Accuracy P-Value")
+# Rename the column
+colnames(overall_stats_knn) <- c("Value")
+
+table_2 <- kable(overall_stats_knn, format = "html", digits = 4, 
+                 caption = "Table 2 KNN Model - Overall Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "bordered"), 
+                full_width = FALSE) %>%
+  row_spec(0, bold = TRUE)
+
+table_2
+```
+
+```{r knn evaluation}
+
+# Create a heatmap of the confusion matrix
+conf_matrix_knn <- confusionMatrix(knn_predictions_tuned, 
+                                   test_data_dummy_caret$NObeyesdad)
+conf_data_knn <- as.data.frame(conf_matrix_knn$table)
+
+CM_heatmap_knn <- ggplot(conf_data_knn, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "black") +
+  scale_fill_gradient(low = "white", high = "#008080") +
+  labs(title = "Figure 2 Confusion Matrix Heatmap KNN",
+       x = "Actual Class", y = "Predicted Class", fill = "Frequency") +
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Figure 2 shows the number of correct and incorrect predictions the tuned KNN model made.
+
+```{r CM_heatmap_knn}
+
+plot(CM_heatmap_knn)
+
+```
+
+### Random Forest Model
+
+The final approach this project will consider is the random forest algorithm where a number of decision trees are built with a random sub sample of the full set of predictors used as the candidates for each split in the tree (James, Witten, Hastei and Tibshirani, 2021, page 354). Random forest algorithms are a very useful machine learning tool as they are able to handle continuous and discreet predictors easily and are inherently less prone to overfitting (they generalise well). Random forest models are relatively easy to understand and interpret making them very useful when communicating to an audience who are not specialists in statistics such as policy makers.
+
+```{r}
+# Prepare the data for caret's train function
+set.seed(34)
+train_data_caret <- data.frame(train_data)
+test_data_caret <- data.frame(test_data)
+
+# Define the parameter grid to tune
+rf_grid <- expand.grid(
+  mtry = c(10, 13, 15, 16) # Number of variables randomly sampled
+)
+
+# Set up cross-validation
+set.seed(34)
+train_control <- trainControl(method = "cv", number = 20)
+
+# Train the Random Forest model using CV to find the optimal parameters
+set.seed(34)
+rf_model_tuned <- train(
+  NObeyesdad ~ .,
+  data = train_data_caret,
+  method = "rf",
+  ntree = 500,
+  nodesize = 1,
+  tuneGrid = rf_grid,
+  trControl = train_control,
+  importance = TRUE # Keep track of variable importance
+)
+
+# Print the best parameters and CV results
+print(rf_model_tuned)
+
+# Make predictions on the test set using the tuned model
+rf_predictions_tuned <- predict(rf_model_tuned, 
+                                newdata = test_data_caret)
+```
+
+The RD model performs very well on the testing data as show in Table 3 with an accuracy of 96.67% and Kappa of 96.11%
+
+```{r rf model evaluation}
+# Evaluate the tuned model
+cm_rf <- print(caret::confusionMatrix(rf_predictions_tuned, 
+                                      test_data_caret$NObeyesdad))
+
+overall_stats_rf <- as.data.frame(cm_rf$overall)
+
+# Remove rows with NaN values
+overall_stats_rf <- overall_stats_rf[!is.nan(overall_stats_rf$`cm_rf$overall`),
+                                       , drop = FALSE]
+
+# Rename the rows after filtering out NaN values
+rownames(overall_stats_rf) <- c("Accuracy", "Kappa", "Accuracy (95% CI Lower)", 
+                                 "Accuracy (95% CI Upper)", "No Information Rate", 
+                                 "Accuracy P-Value")
+# Rename the column
+colnames(overall_stats_rf) <- c("Value")
+
+table_3 <- kable(overall_stats_rf, format = "html", digits = 4, 
+                 caption = "Table 3 RF Model - Overall Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "bordered"), 
+                full_width = FALSE) %>%
+  row_spec(0, bold = TRUE)
+
+table_3
+
+# Create a heatmap of the confusion matrix
+conf_matrix_rf <- caret::confusionMatrix(rf_predictions_tuned, 
+                                         test_data_caret$NObeyesdad)
+conf_data_rf <- as.data.frame(conf_matrix_rf$table)
+
+CM_heatmap_rf <- ggplot(conf_data_rf, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "black") +
+  scale_fill_gradient(low = "white", high = "#fa8072") +
+  labs(title = "Figure 3 Confusion Matrix Heatmap RF",
+       x = "Actual Class", y = "Predicted Class", fill = "Frequency") +
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Figure 3 shows the number of correct and incorrect predictions the tuned RF model made.
+
+```{r CM_heatmap_rf}
+plot(CM_heatmap_rf)
+```
+
+## Conclusions
+
+All three modeling approaches-regularised discriminant analysis, k-nearest neighbours, and random forests-demonstrated strong predictive capability for obesity levels, confirming computational approaches can be valuable tools in studying and addressing obesity trends.
+
+The random forest model consistently outperformed the other models across key metrics including precision (Table 4), recall/true positives (Table 5), and false positives (Table 6). It also offers enhanced interpretability through variable importance measures, revealing that Weight, Height, Gender (male), Age, and Intake of Highly Calorific Food are the top predictors of obesity (Figure 4).
+
+```{r model comparisons}
+# Create a tables with all 3 models in comparing their performance
+
+# Helper function to extract metrics
+extract_metrics <- function(conf_matrix) {
+  # Extract metrics by class
+  by_class_stats <- conf_matrix$byClass
+  
+  # Handle cases where by_class_stats might be a vector (binary classification)
+  if (is.vector(by_class_stats)) {
+    precision <- by_class_stats['Precision']
+    recall <- by_class_stats['Recall'] # Recall is Sensitivity
+    specificity <- by_class_stats['Specificity']
+    class_names <- names(recall) # Or derive from conf_matrix$positive
+  } else {
+    precision <- by_class_stats[, 'Precision']
+    recall <- by_class_stats[, 'Sensitivity'] # Recall is Sensitivity in caret
+    specificity <- by_class_stats[, 'Specificity']
+    class_names <- rownames(by_class_stats)
+  }
+  
+  # Calculate False Positive Rate (FPR)
+  fpr <- 1 - specificity
+  
+  # Calculate average metrics (macro average)
+  avg_precision <- mean(precision, na.rm = TRUE)
+  avg_recall <- mean(recall, na.rm = TRUE)
+  avg_fpr <- mean(fpr, na.rm = TRUE)
+  
+  # Combine class-specific and average metrics
+  metrics_df <- data.frame(
+    Precision = c(precision, Average = avg_precision),
+    Recall = c(recall, Average = avg_recall),
+    FPR = c(fpr, Average = avg_fpr)
+  )
+  rownames(metrics_df) <- c(class_names, "Average")
+  
+  return(metrics_df)
+}
+
+# Extract metrics for each model
+metrics_rda <- extract_metrics(conf_matrix_rda)
+metrics_knn <- extract_metrics(conf_matrix_knn)
+metrics_rf <- extract_metrics(conf_matrix_rf)
+
+#  Create combined tables for each metric
+categories <- rownames(metrics_rda) # Includes 'Average'
+
+# Precision Table
+precision_table <- data.frame(
+  Category = categories,
+  RDA = metrics_rda$Precision,
+  KNN = metrics_knn$Precision,
+  RF = metrics_rf$Precision,
+  row.names = NULL # Prevent row names from being category names again
+)
+
+# Recall / True Positive Rate Table
+recall_table <- data.frame(
+  Category = categories,
+  RDA = metrics_rda$Recall,
+  KNN = metrics_knn$Recall,
+  RF = metrics_rf$Recall,
+  row.names = NULL
+)
+
+# False Positive Rate Table
+fpr_table <- data.frame(
+  Category = categories,
+  RDA = metrics_rda$FPR,
+  KNN = metrics_knn$FPR,
+  RF = metrics_rf$FPR,
+  row.names = NULL
+)
+
+# Print tables in Markdown format
+
+cat("## Model Performance Comparison\n\n")
+
+cat("### Precision\n")
+precision_table %>%
+  kbl(format = "markdown", digits = 3, 
+      caption = "Table 4 Precision by Category and Model") %>%
+  kable_styling(bootstrap_options = c("bordered", "condensed"), 
+                full_width = FALSE) %>%
+  column_spec(1, width = "4cm") %>%  # Category column
+  column_spec(2:4, width = "3cm") %>%  # Model columns
+  print()
+
+cat("\n### Recall / True Positive Rate\n")
+recall_table %>%
+  kbl(format = "markdown", digits = 3, 
+      caption = "Table 5 Recall (TPR) by Category and Model") %>%
+  kable_styling(bootstrap_options = c("bordered", "condensed"),
+                full_width = FALSE) %>%
+  column_spec(1, width = "4cm") %>%
+  column_spec(2:4, width = "3cm") %>%
+  print()
+
+cat("\n### False Positive Rate\n")
+fpr_table %>%
+  kbl(format = "markdown", digits = 3, 
+      caption = "Table 6 False Positive Rate (FPR) by Category and Model") %>%
+  kable_styling(bootstrap_options = c("bordered", "condensed"),
+                full_width = FALSE) %>%
+  column_spec(1, width = "4cm") %>%
+  column_spec(2:4, width = "3cm") %>%
+  print()
+
+
+```
+
+```{r variable importance rf}
+# Variable importance table
+var_imp_rf <- vip(rf_model_tuned$finalModel, 
+                  num_features = 15,
+                  aesthetics = list(fill = "#72dfff")) +
+  theme_minimal() +
+  labs(
+    title = "Figure 4 Variable Importance",
+    subtitle = "Top 15 Features in Random Forest Model"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, color = "gray40"),
+    axis.title.y = element_blank()
+  )
+
+var_imp_rf
+```
+
+This interpretability is particularly valuable for public health policy makers who require both accurate predictions and clear understanding of underlying factors. By identifying modifiable risk factors such as dietary habits, these models can help target interventions more effectively and inform evidence-based public health strategies aimed at addressing the rising trend of obesity in society.
+
+## Literature Cited
+
+Cervantes, R.C. and Palacio, U.M. (2020) 'Estimation of obesity levels based on computational intelligence', Informatics in Medicine Unlocked, 21. doi: 10.1016/j.imu.2020.100472.
+
+De-La-Hoz-Correa, E., Mendoza-Palechor, F.E., De-La-Hoz-Manotas, A., Morales-Ortega, R.C. and Beatriz Adriana, S.H. (2019) 'Obesity Level Estimation Software based on Decision Trees', Journal of Computer Science, 15(1), pp. 67. doi: 10.3844/jcssp.2019.67.77.
+
+Ferdowsy, F., Rahi, K.S.A., Jabiullah, M.I. and Habib, M.T. (2021) 'A machine learning approach for obesity risk prediction', Current Research in Behavioral Sciences, 2. doi: 10.1016/j.crbeha.2021.100053.
+
+Gerl, M.J., Klose, C., Surma, M.A., Fernandez, C., Melander, O., Männistö, S., Borodulin, K., Havulinna, A.S., Salomaa, V., Ikonen, E., Cannistraci, C.V. and Simons, K. (2019) 'Machine learning of human plasma lipidomes for obesity estimation in a large population cohort', PLOS Biology, 17(10), pp. e3000443. doi: 10.1371/journal.pbio.3000443.
+
+Huang, L., Huhulea, E.N., Abraham, E., Bienenstock, R., Aifuwa, E., Hirani, R., Schulhof, A., Tiwari, R.K. and Etienne, M. (2025) 'The Role of Artificial Intelligence in Obesity Risk Prediction and Management: Approaches, Insights, and Recommendations', Medicina, 61(2). doi: 10.3390/medicina61020358.
+
+James, M., Nappi, C., Witten, E., Hastie, P., Tibshirani, S., Michael, D., Tessa, C., Theo, O., Samantha, A. and Charlie, L. An Introducton to Statistical Learing_2023.
+
+Masood, B. and Moorthy, M. (2023) 'Causes of obesity: a review', Clinical Medicine, 23(4), pp. 284–291. doi: 10.7861/clinmed.2023-0168.
+
+Mkhadri, A., Celeux, G. and Nasroallah, A. (1997) 'Regularization in discriminant analysis: an overview', Computational Statistics & Data Analysis, 23(3), pp. 403–423. doi: 10.1016/S0167-9473(96)00043-6.
+
+Nagi, M.A., Ahmed, H., Rezq, M.A.A., Sangroongruangsri, S., Chaikledkaew, U., Almalki, Z. and Thavorncharoensap, M. (2024) 'Economic costs of obesity: a systematic review', International Journal of Obesity, 48(1), pp. 33–43. doi: 10.1038/s41366-023-01398-y.
+
+Palechor, F.M. and Manotas, A.d.l.H. (2019) 'Dataset for estimation of obesity levels based on eating habits and physical condition in individuals from Colombia, Peru and Mexico', Data in Brief, 25, pp. 104344. doi: 10.1016/j.dib.2019.104344.
+
+Powis, J., Thompson, R. and Jackson-Leach, R. (2025) World Obesity Atlas 2025 Overweight, obesity and non-communicable diseases.
+
+Salman, H.A., Kalakech, A. and Steiti, A. (2024) 'Random Forest Algorithm Overview', Babylonian Journal of Machine Learning, 2024, pp. 69. doi: 10.58496/bjml/2024/007.
+
+UCI Machine Learning Repository (2019) Dataset for estimation of obesity levels based on eating habits and physical condition in individuals from Colombia, Peru and Mexico. Available at: <https://linkinghub.elsevier.com/retrieve/pii/S2352340919306985> (Accessed: May 4, 2025).
