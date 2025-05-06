@@ -3,8 +3,8 @@ title: 'Evaluating classification methods for obesity determination '
 author: "Lientjie Colahan"
 date: "2025-05-05"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 # Github Link
