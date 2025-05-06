@@ -14,4 +14,4 @@ In order for policy makers to get to grips with the obesity pandemic an understa
 This project aims to fit obesity data to three models with 'Obesity level' (NObeyesdad) as the target variable and all other variables as predictor variables to determine which model performs best. Modelling algorithms have shown promising results in previous studies, with decision trees achieving accuracy rates up to 97.4% (De-La-Hoz-Correa, et al., 2019).
 
 The World Obesity Federation has created a Global Obesity Observatory where you can view the most up to date obesity rates around the world:
-<<https://data.worldobesity.org/>>
+<https://data.worldobesity.org/>
