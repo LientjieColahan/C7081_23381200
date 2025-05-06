@@ -1,6 +1,8 @@
 # C7081_23381200
 Repository containing all files relevant to the C7081 Assignment for Susan Colahan
 
+# Predicting Obesity Determinants Through Statistical Learning: A Comparative Analysis of Three Models for Policy Development
+
 ## Background
 
 Obesity is defined by the World Health Organisation (WHO) as having a Body Mass Index (BMI) of 30 or greater. The World Obesity Federation's Obesity Atlas (2025) projects 1.13 billion people will be living with obesity globally by 2030, and currently 28% of UK adults are living with obesity. Obesity carries significant economic and psychological costs, with a recent review by Nagi et al. (2024) estimating annual costs between 15 million and 126 billion US dollars, measured as as United States (US) dollar purchasing power parity (PPP) in 2022, depending on the country. Globally, the economic burden can reach up to 2.47% of total GDP. Beyond financial impact, obesity is associated with intangible costs including personal suffering and social stigma.
